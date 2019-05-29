@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package go.micro.srv.blob;
+
+service Blob {
+        rpc CreateBucket(CreateBucketReq) returns (CreateBucketResp) {}
+        rpc DeleteBucket(DeleteBucketReq) returns (DeleteBucketResp) {}
+        rpc Put(stream PutReq) returns (PutResp) {}
+        rpc Get(GetReq) returns (stream GetResp) {}
+        rpc Delete(DeleteReq) returns (DeleteResp) {}
+        rpc List(ListReq) returns (ListResp) {}
+}
+
+message CreateBucketReq {
+        string id = 1;
+}
+
+message CreateBucketResp {}
+
+message DeleteBucketReq {
+        string id = 1;
+}
+
+message DeleteBucketResp {}
+
+message PutReq {
+        string id = 1;
+        string bucket_id = 2;
+        bytes data = 3;
+}
+
+message PutResp {}
+
+message GetReq {
+        string id = 1;
+        string bucket_id = 2;
+}
+
+message GetResp {
+        bytes data = 1;
+}
+
+message DeleteReq {
+        string id = 1;
+        string bucket_id = 2;
+}
+
+message DeleteResp {}
+
+message ListReq {
+        string bucket_id = 1;
+}
+
+message ListResp {
+        repeated string id = 1;
+}
