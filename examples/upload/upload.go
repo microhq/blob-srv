@@ -11,12 +11,13 @@ import (
 	pb "github.com/microhq/blob-srv/proto/blob"
 )
 
-func main() {
-	var (
-		bucketId string
-		path     string
-	)
+var (
+	bucketId string
+	path     string
+	buffSize int
+)
 
+func main() {
 	// New Service
 	service := micro.NewService(
 		micro.Name("go.micro.srv.blob"),
@@ -32,6 +33,11 @@ func main() {
 				Value: "",
 				Usage: "Path to file blob",
 			},
+			cli.IntFlag{
+				Name:  "buf_size",
+				Value: 1024 * 1024,
+				Usage: "Download buffer size",
+			},
 		),
 	)
 
@@ -40,6 +46,7 @@ func main() {
 		micro.Action(func(c *cli.Context) {
 			bucketId = c.String("bucket_id")
 			path = c.String("blob_path")
+			buffSize = c.Int("buf_size")
 		}),
 	)
 
@@ -70,7 +77,7 @@ func main() {
 	upload := true
 
 	// sent data in 1M chunks
-	buf := make([]byte, 1024*1024)
+	buf := make([]byte, buffSize)
 
 	// stream the data across to blob service
 	for upload {

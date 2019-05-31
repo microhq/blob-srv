@@ -16,15 +16,24 @@ import (
 type Blob struct {
 	// baseDir is the base directory under which all blobs are stored
 	baseDir string
+	// buffSize is server download buffer size
+	buffSize int
 }
 
 // NewBlob creates new blob handler and returns it
-func NewBlob(dir string) (*Blob, error) {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("path does not exist: %s", dir)
+func NewBlob(baseDir string, buffSize int) (*Blob, error) {
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("path does not exist: %s", baseDir)
 	}
 
-	return &Blob{baseDir: dir}, nil
+	if buffSize <= 0 {
+		return nil, fmt.Errorf("invalid server buffer size: %d", buffSize)
+	}
+
+	return &Blob{
+		baseDir:  baseDir,
+		buffSize: buffSize,
+	}, nil
 }
 
 // CreateBucket creates new bucket to store the files blobs in.
@@ -45,7 +54,7 @@ func (b *Blob) DeleteBucket(ctx context.Context, req *pb.DeleteBucketReq, resp *
 // Put allows to upload a file into specified bucket.
 // It fails with error if either the client upload fails or the file fails to be stored.
 func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
-	log.Logf("Received PUT request")
+	log.Logf("Received put file request")
 
 	var id string
 	var bucketId string
@@ -55,7 +64,6 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	for {
 		blob, err := stream.Recv()
@@ -65,7 +73,8 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 		}
 
 		if err != nil {
-			return fmt.Errorf("Error storing blob: %s", err)
+			log.Logf("error storing blob: %s", err)
+			return f.Close()
 		}
 
 		bucketId = blob.BucketId
@@ -74,7 +83,8 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 		log.Logf("Received %d bytes of blob: %s", len(blob.Data), filepath.Join(blob.BucketId, blob.Id))
 
 		if _, err := f.Write(blob.Data); err != nil {
-			return err
+			log.Logf("error storing blob: %s", err)
+			return f.Close()
 		}
 	}
 
@@ -83,11 +93,15 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 
 	// move tempfile into bucket directory
 	if err := os.Rename(oldPath, newPath); err != nil {
-		log.Logf("Error renaming files: %s", err)
-		return err
+		log.Logf("error renaming file: %s", err)
+		// if we fail to rename the file; let's attempt to remove it
+		if errRm := os.Remove(oldPath); errRm != nil {
+			log.Logf("error storing file: %s", errRm)
+		}
+		return f.Close()
 	}
 
-	return nil
+	return f.Close()
 }
 
 // Get allows to download a file from given bucket.
@@ -95,16 +109,18 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 func (b *Blob) Get(ctx context.Context, req *pb.GetReq, stream pb.Blob_GetStream) error {
 	log.Logf("Received GET request to get file %s from bucket %s", req.Id, req.BucketId)
 
+	// Open file for reading only
 	filePath := filepath.Join(b.baseDir, req.BucketId, req.Id)
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Logf("failed to open file %s: %s", filePath, err)
-		return err
+		return fmt.Errorf("error opening file: %s", err)
 	}
 	defer file.Close()
 
+	// close the stream on exit
 	defer stream.Close()
-	buf := make([]byte, 1024*1024)
+	buf := make([]byte, b.buffSize)
 
 	for {
 		n, err := file.Read(buf)
@@ -113,13 +129,13 @@ func (b *Blob) Get(ctx context.Context, req *pb.GetReq, stream pb.Blob_GetStream
 		}
 
 		if err != nil {
-			return fmt.Errorf("Error streaming file: %s", err)
+			return fmt.Errorf("error streaming file: %s", err)
 		}
 
-		log.Logf("Sending %d bytes of %s", n, filepath.Join(req.BucketId, req.Id))
+		log.Logf("sending %d bytes of %s", n, filepath.Join(req.BucketId, req.Id))
 
 		if err := stream.Send(&pb.GetResp{Data: buf[:n]}); err != nil {
-			return fmt.Errorf("Error streaming file %s: %s", file.Name(), err)
+			return fmt.Errorf("error streaming file %s: %s", file.Name(), err)
 		}
 	}
 
