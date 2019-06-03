@@ -106,7 +106,7 @@ func (b *Blob) Put(ctx context.Context, stream pb.Blob_PutStream) error {
 // Get allows to download a file from given bucket.
 // Get streans the requested file to client in chunks of 1MB.
 func (b *Blob) Get(ctx context.Context, req *pb.GetReq, stream pb.Blob_GetStream) error {
-	log.Logf("received Get request to get blob %s from bucket %s", req.Id, req.BucketId)
+	log.Logf("Received get request to get blob %s from bucket %s", req.Id, req.BucketId)
 
 	// Open file for reading only
 	filePath := filepath.Join(b.baseDir, req.BucketId, req.Id)
@@ -138,28 +138,20 @@ func (b *Blob) Get(ctx context.Context, req *pb.GetReq, stream pb.Blob_GetStream
 		}
 	}
 
-	log.Logf("closing stream socket")
-
-	// close stream when done sending
-	if err := stream.Close(); err != nil {
-		log.Logf("failed to close stream socket: %s", err)
-		return err
-	}
-
 	return nil
 }
 
 // Delete deletes the file given by its id from the given bucket.
 // It returns error of the file failed to be deleted from blob store.
 func (b *Blob) Delete(ctx context.Context, req *pb.DeleteReq, resp *pb.DeleteResp) error {
-	log.Logf("Received DELETE request for file %s", filepath.Join(req.BucketId, req.Id))
+	log.Logf("Received delete request for file %s", filepath.Join(req.BucketId, req.Id))
 
 	return os.Remove(filepath.Join(b.baseDir, req.BucketId, req.Id))
 }
 
 // List lists all the keys inside the given bucket.
 func (b *Blob) List(ctx context.Context, req *pb.ListReq, resp *pb.ListResp) error {
-	log.Logf("Received LIST request for bucket: %s", req.BucketId)
+	log.Logf("Received list request for bucket: %s", req.BucketId)
 
 	dir, err := os.Open(filepath.Join(b.baseDir, req.BucketId))
 	if err != nil {
